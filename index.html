@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#c00000">
+  <title>Gestion de stock DESAUTEL</title>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <style>
+    :root{--red:#c00000;--red2:#9f0000;--bg:#f4f4f4;--card:#fff;--text:#222;--muted:#6d6d6d;--border:#d8d8d8;--ok:#177434;--err:#a40000}
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,sans-serif;background:var(--bg);color:var(--text)}
+    .wrap{max-width:560px;margin:auto;padding:18px}
+    .brand{text-align:center;margin:8px 0 20px}
+    .brand h1{margin:0;color:var(--red);font-size:26px}
+    .brand p{margin:5px 0 0;color:var(--muted)}
+    .card{background:var(--card);border-radius:16px;padding:20px;box-shadow:0 3px 16px rgba(0,0,0,.10);margin-bottom:16px}
+    label{display:block;font-weight:700;font-size:14px;margin:14px 0 6px}
+    input,select,textarea{width:100%;padding:14px;border:1px solid var(--border);border-radius:10px;font-size:17px;background:#fff}
+    textarea{min-height:80px;resize:vertical}
+    button{width:100%;border:0;border-radius:10px;padding:15px;font-size:17px;font-weight:700;margin-top:14px}
+    .red{background:var(--red);color:#fff}.red:active{background:var(--red2)}
+    .dark{background:#333;color:#fff}.gray{background:#e6e6e6;color:#333}
+    .hidden{display:none!important}
+    .tech{padding:12px;border-radius:10px;background:#f1f1f1;text-align:center;font-weight:700}
+    .msg{display:none;margin-top:14px;padding:12px;border-radius:9px;font-size:14px}
+    .msg.ok{display:block;background:#e8f6eb;color:var(--ok);border:1px solid #9bd0a8}
+    .msg.err{display:block;background:#fdeaea;color:var(--err);border:1px solid #e5a7a7}
+    .article{display:none;margin-top:12px;padding:12px;border-left:5px solid var(--red);background:#f7f7f7;border-radius:7px}
+    .article strong{display:block;font-size:17px}.article span{display:block;color:var(--muted);margin-top:3px}
+    .small{font-size:12px;color:var(--muted);margin-top:6px}
+    .overlay{position:fixed;inset:0;background:#000;z-index:9999;display:none;flex-direction:column}
+    .camhead{padding:14px;background:var(--red);color:#fff;text-align:center;font-weight:700}
+    .camzone{position:relative;flex:1;overflow:hidden}
+    #video{width:100%;height:100%;object-fit:cover}
+    .frame{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:270px;height:270px;border:4px solid white;border-radius:15px;box-shadow:0 0 0 9999px rgba(0,0,0,.42)}
+    .hint{position:absolute;left:0;right:0;bottom:28px;color:#fff;text-align:center;font-weight:700;text-shadow:0 2px 4px #000;padding:0 20px}
+    .camfoot{padding:14px 18px 22px;background:#111}
+    .camfoot button{margin:0;background:var(--red);color:#fff}
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand"><h1>GESTION DE STOCK</h1><p>DESAUTEL • Bordeaux / Abidos</p></div>
+
+    <section id="loginCard" class="card">
+      <h2>Identification technicien</h2>
+      <label for="codeTechnicien">Code technicien</label>
+      <input id="codeTechnicien" inputmode="numeric" autocomplete="off" placeholder="Ex. 46092">
+      <label for="pin">Code PIN</label>
+      <input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
+      <button class="red" onclick="connexion()">SE CONNECTER</button>
+      <div id="loginMsg" class="msg"></div>
+    </section>
+
+    <section id="moveCard" class="card hidden">
+      <div id="techInfo" class="tech"></div>
+      <label for="magasin">Magasin</label>
+      <select id="magasin"></select>
+      <label for="typeMvt">Mouvement</label>
+      <select id="typeMvt"></select>
+      <label for="dm">Data Matrix</label>
+      <input id="dm" autocomplete="off" autocapitalize="characters" placeholder="Scanner ou saisir le Data Matrix">
+      <button class="dark" onclick="ouvrirCamera()">📷 SCANNER AVEC LA CAMÉRA</button>
+      <div class="small">Compatible téléphone, zappette et saisie manuelle.</div>
+      <div id="article" class="article"><strong id="artName"></strong><span id="artCode"></span></div>
+      <label for="qty">Quantité</label>
+      <input id="qty" type="number" inputmode="numeric" min="1" step="1" value="1">
+      <label for="chantier">Chantier / Client</label>
+      <input id="chantier" autocomplete="off" placeholder="Facultatif">
+      <label for="commentaire">Commentaire</label>
+      <textarea id="commentaire" placeholder="Facultatif"></textarea>
+      <button class="red" onclick="valider()">VALIDER LE MOUVEMENT</button>
+      <button class="gray" onclick="deconnexion()">CHANGER DE TECHNICIEN</button>
+      <div id="moveMsg" class="msg"></div>
+    </section>
+  </main>
+
+  <div id="overlay" class="overlay">
+    <div class="camhead">SCAN DATA MATRIX</div>
+    <div class="camzone">
+      <video id="video" autoplay muted playsinline></video>
+      <div class="frame"></div>
+      <div class="hint">Place le Data Matrix dans le carré</div>
+    </div>
+    <div class="camfoot"><button onclick="fermerCamera()">ANNULER</button></div>
+  </div>
+
+<script>
+const API_URL='https://script.google.com/macros/s/AKfycbwGpMaVaxfhuXxZHYpRxhq9zqJxEYXuEMiIEyeO1jsyo-LSWAvdfYHMU02DHDDrTek/exec';
+let session=null, reader=null, scanning=false;
+
+function jsonp(action, params={}){
+  return new Promise((resolve,reject)=>{
+    const cb='cb_'+Date.now()+'_'+Math.floor(Math.random()*1e6);
+    const s=document.createElement('script');
+    const t=setTimeout(()=>{cleanup();reject(new Error('Délai serveur dépassé.'));},15000);
+    function cleanup(){clearTimeout(t);delete window[cb];s.remove();}
+    window[cb]=(data)=>{cleanup();resolve(data);};
+    const q=new URLSearchParams({action,callback:cb,...params});
+    s.onerror=()=>{cleanup();reject(new Error('Serveur inaccessible.'));};
+    s.src=API_URL+'?'+q.toString();
+    document.body.appendChild(s);
+  });
+}
+function msg(id,text,type){const e=document.getElementById(id);e.className='msg '+type;e.textContent=text;}
+function clearMsg(id){const e=document.getElementById(id);e.className='msg';e.textContent='';}
+function fill(id,arr,field){const s=document.getElementById(id);s.innerHTML='';(arr||[]).forEach(x=>{const o=document.createElement('option');o.value=field?x[field]:x;o.textContent=field?x[field]:x;s.appendChild(o);});}
+
+async function connexion(){
+  clearMsg('loginMsg');
+  const code=document.getElementById('codeTechnicien').value.trim();
+  const pin=document.getElementById('pin').value.trim();
+  if(!code||!pin){msg('loginMsg','Saisis le code technicien et le PIN.','err');return;}
+  try{
+    const r=await jsonp('login',{codeTechnicien:code,pin});
+    if(!r.ok){msg('loginMsg',r.message||'Connexion impossible.','err');return;}
+    session={code:r.code,pin,nomComplet:r.nomComplet};
+    document.getElementById('techInfo').textContent=r.nomComplet+' • '+r.code;
+    fill('magasin',r.magasins);
+    fill('typeMvt',r.typesMouvement,'libelle');
+    document.getElementById('loginCard').classList.add('hidden');
+    document.getElementById('moveCard').classList.remove('hidden');
+  }catch(e){msg('loginMsg',e.message,'err');}
+}
+
+document.getElementById('dm').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();chercherArticle();}});
+async function chercherArticle(){
+  clearMsg('moveMsg');
+  const dm=document.getElementById('dm').value.trim();
+  document.getElementById('article').style.display='none';
+  if(!dm)return;
+  try{
+    const r=await jsonp('article',{dataMatrix:dm});
+    if(!r.ok){msg('moveMsg',r.message||'Article introuvable.','err');return;}
+    document.getElementById('artName').textContent=r.designation;
+    document.getElementById('artCode').textContent=r.codeArticle+' • '+r.dataMatrix;
+    document.getElementById('article').style.display='block';
+    document.getElementById('qty').focus();document.getElementById('qty').select();
+  }catch(e){msg('moveMsg',e.message,'err');}
+}
+
+async function ouvrirCamera(){
+  clearMsg('moveMsg');
+  try{
+    if(typeof ZXing==='undefined')throw new Error('Module de scan non chargé.');
+    document.getElementById('overlay').style.display='flex';
+    reader=new ZXing.BrowserDatamatrixCodeReader();
+    scanning=true;
+    await reader.decodeFromVideoDevice(null,'video',(result,err)=>{
+      if(!scanning)return;
+      if(result){
+        const v=(result.getText?result.getText():result.text||'').trim();
+        if(v){document.getElementById('dm').value=v;fermerCamera();chercherArticle();}
+      }
+    });
+  }catch(e){fermerCamera();msg('moveMsg','Impossible d’ouvrir la caméra : '+e.message,'err');}
+}
+function fermerCamera(){scanning=false;if(reader){try{reader.reset();}catch(e){}reader=null;}const v=document.getElementById('video');if(v.srcObject){v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null;}document.getElementById('overlay').style.display='none';}
+
+async function valider(){
+  clearMsg('moveMsg');
+  if(!session){msg('moveMsg','Session invalide.','err');return;}
+  const data={
+    codeTechnicien:session.code,pin:session.pin,
+    magasin:document.getElementById('magasin').value,
+    typeMouvement:document.getElementById('typeMvt').value,
+    dataMatrix:document.getElementById('dm').value.trim(),
+    quantite:document.getElementById('qty').value,
+    chantier:document.getElementById('chantier').value.trim(),
+    commentaire:document.getElementById('commentaire').value.trim()
+  };
+  if(!data.dataMatrix||Number(data.quantite)<=0){msg('moveMsg','Scanne un article et vérifie la quantité.','err');return;}
+  try{
+    const r=await jsonp('mouvement',data);
+    if(!r.ok){msg('moveMsg',r.message||'Enregistrement impossible.','err');return;}
+    msg('moveMsg','✓ '+r.article+' — quantité '+r.quantite+' enregistrée.','ok');
+    document.getElementById('dm').value='';document.getElementById('qty').value='1';document.getElementById('chantier').value='';document.getElementById('commentaire').value='';document.getElementById('article').style.display='none';
+  }catch(e){msg('moveMsg',e.message,'err');}
+}
+function deconnexion(){fermerCamera();session=null;document.getElementById('moveCard').classList.add('hidden');document.getElementById('loginCard').classList.remove('hidden');document.getElementById('codeTechnicien').value='';document.getElementById('pin').value='';}
+</script>
+</body>
+</html>
