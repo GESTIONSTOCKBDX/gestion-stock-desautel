@@ -37,6 +37,14 @@
     .hint{position:absolute;left:0;right:0;bottom:28px;color:#fff;text-align:center;font-weight:700;text-shadow:0 2px 4px #000;padding:0 20px}
     .camfoot{padding:14px 18px 22px;background:#111}
     .camfoot button{margin:0;background:var(--red);color:#fff}
+    .role-badge{margin-top:8px;font-size:13px;color:var(--muted)}
+    .menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+    .menu-btn{margin:0;min-height:86px;padding:14px 10px;background:#333;color:#fff;display:flex;align-items:center;justify-content:center;text-align:center}
+    .menu-btn.redmenu{background:var(--red)}
+    .menu-btn.light{background:#e9e9e9;color:#222}
+    .menu-btn.full{grid-column:1/-1}
+    .sectionTitle{margin:0 0 8px;font-size:20px}
+    .backBtn{margin-top:0;background:#e6e6e6;color:#333}
   </style>
 </head>
 <body>
@@ -55,6 +63,22 @@
 
     <section id="moveCard" class="card hidden">
       <div id="techInfo" class="tech"></div>
+
+      <div id="magMenu" class="hidden">
+        <div class="role-badge">Choisis l’opération à effectuer</div>
+        <div class="menu-grid">
+          <button class="menu-btn redmenu" onclick="choisirMouvement('Entrée magasinier')">ENTRÉE<br>MAGASIN</button>
+          <button class="menu-btn" onclick="choisirMouvement('Sortie magasin')">SORTIE<br>MAGASIN</button>
+          <button class="menu-btn" onclick="choisirMouvement('Retour technicien')">RETOUR<br>TECHNICIEN</button>
+          <button class="menu-btn" onclick="choisirMouvement('Défectueux')">DÉFECTUEUX</button>
+          <button class="menu-btn light" onclick="choisirMouvement('Correction inventaire')">CORRECTION<br>INVENTAIRE</button>
+          <button class="menu-btn light" onclick="ouvrirInventaire()">INVENTAIRE</button>
+        </div>
+      </div>
+
+      <div id="movementForm">
+        <button id="btnRetourMenu" class="backBtn hidden" onclick="retourMenuMagasinier()">← RETOUR AU MENU</button>
+
       <label for="magasin">Magasin</label>
       <select id="magasin"></select>
       <label for="typeMvt">Mouvement</label>
@@ -71,6 +95,14 @@
       <label for="commentaire">Commentaire</label>
       <textarea id="commentaire" placeholder="Facultatif"></textarea>
       <button id="btnValider" class="red" onclick="valider()">VALIDER LE MOUVEMENT</button>
+      </div>
+
+      <div id="inventaireCard" class="hidden">
+        <button class="backBtn" onclick="retourMenuMagasinier()">← RETOUR AU MENU</button>
+        <h3 class="sectionTitle">Inventaire</h3>
+        <div class="small">Le module inventaire sera branché à l’étape suivante avec stock théorique, quantité comptée et calcul automatique de l’écart.</div>
+      </div>
+
       <button class="gray" onclick="deconnexion()">CHANGER D’UTILISATEUR</button>
       <div id="moveMsg" class="msg"></div>
     </section>
@@ -121,7 +153,59 @@ async function connexion(){
     fill('typeMvt',r.typesMouvement,'libelle');
     document.getElementById('loginCard').classList.add('hidden');
     document.getElementById('moveCard').classList.remove('hidden');
+
+    if(String(r.profil).toUpperCase()==='MAGASINIER'){
+      document.getElementById('magMenu').classList.remove('hidden');
+      document.getElementById('movementForm').classList.add('hidden');
+      document.getElementById('inventaireCard').classList.add('hidden');
+    }else{
+      document.getElementById('magMenu').classList.add('hidden');
+      document.getElementById('movementForm').classList.remove('hidden');
+      document.getElementById('btnRetourMenu').classList.add('hidden');
+      document.getElementById('inventaireCard').classList.add('hidden');
+    }
   }catch(e){msg('loginMsg',e.message,'err');}
+}
+
+function choisirMouvement(libelle){
+  const select=document.getElementById('typeMvt');
+  let trouve=false;
+  for(let i=0;i<select.options.length;i++){
+    if(select.options[i].value.toUpperCase()===String(libelle).toUpperCase()){
+      select.selectedIndex=i;
+      trouve=true;
+      break;
+    }
+  }
+  if(!trouve){
+    msg('moveMsg','Ce type de mouvement n’est pas disponible dans PARAMETRES.','err');
+    return;
+  }
+  clearMsg('moveMsg');
+  document.getElementById('magMenu').classList.add('hidden');
+  document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('movementForm').classList.remove('hidden');
+  document.getElementById('btnRetourMenu').classList.remove('hidden');
+  document.getElementById('dm').focus();
+}
+
+function ouvrirInventaire(){
+  clearMsg('moveMsg');
+  document.getElementById('magMenu').classList.add('hidden');
+  document.getElementById('movementForm').classList.add('hidden');
+  document.getElementById('inventaireCard').classList.remove('hidden');
+}
+
+function retourMenuMagasinier(){
+  document.getElementById('movementForm').classList.add('hidden');
+  document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('magMenu').classList.remove('hidden');
+  document.getElementById('dm').value='';
+  document.getElementById('qty').value='1';
+  document.getElementById('chantier').value='';
+  document.getElementById('commentaire').value='';
+  document.getElementById('article').style.display='none';
+  clearMsg('moveMsg');
 }
 
 document.getElementById('dm').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();chercherArticle();}});
@@ -191,7 +275,20 @@ async function valider(){
     btn.textContent=ancienTexte;
   }
 }
-function deconnexion(){fermerCamera();session=null;document.getElementById('moveCard').classList.add('hidden');document.getElementById('loginCard').classList.remove('hidden');document.getElementById('codeTechnicien').value='';document.getElementById('pin').value='';}
+function deconnexion(){
+  fermerCamera();
+  session=null;
+  document.getElementById('moveCard').classList.add('hidden');
+  document.getElementById('loginCard').classList.remove('hidden');
+  document.getElementById('magMenu').classList.add('hidden');
+  document.getElementById('movementForm').classList.remove('hidden');
+  document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('btnRetourMenu').classList.add('hidden');
+  document.getElementById('codeTechnicien').value='';
+  document.getElementById('pin').value='';
+  clearMsg('loginMsg');
+  clearMsg('moveMsg');
+}
 </script>
 </body>
 </html>
