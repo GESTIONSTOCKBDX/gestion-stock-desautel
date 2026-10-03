@@ -45,6 +45,10 @@
     .menu-btn.full{grid-column:1/-1}
     .sectionTitle{margin:0 0 8px;font-size:20px}
     .backBtn{margin-top:0;background:#e6e6e6;color:#333}
+    .history-list{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+    .history-item{border:1px solid var(--border);border-radius:10px;padding:12px;background:#fafafa}
+    .history-item strong{display:block;font-size:15px}
+    .history-item span{display:block;color:var(--muted);font-size:13px;margin-top:3px}
   </style>
 </head>
 <body>
@@ -73,6 +77,7 @@
           <button class="menu-btn" onclick="choisirMouvement('Défectueux')">DÉFECTUEUX</button>
           <button class="menu-btn light" onclick="choisirMouvement('Correction inventaire')">CORRECTION<br>INVENTAIRE</button>
           <button class="menu-btn light" onclick="ouvrirInventaire()">INVENTAIRE</button>
+          <button class="menu-btn full" onclick="ouvrirHistorique()">HISTORIQUE</button>
         </div>
       </div>
 
@@ -83,6 +88,12 @@
       <select id="magasin"></select>
       <label for="typeMvt">Mouvement</label>
       <select id="typeMvt"></select>
+
+      <div id="techConcerneBloc" class="hidden">
+        <label for="techConcerne">Technicien concerné</label>
+        <select id="techConcerne"></select>
+      </div>
+
       <label for="dm">Data Matrix</label>
       <input id="dm" autocomplete="off" autocapitalize="characters" placeholder="Scanner ou saisir le Data Matrix">
       <button class="dark" onclick="modeCamera='mouvement';ouvrirCamera()">📷 SCANNER AVEC LA CAMÉRA</button>
@@ -129,6 +140,14 @@
         <div id="invMsg" class="msg"></div>
       </div>
 
+      <div id="historiqueCard" class="hidden">
+        <button class="backBtn" onclick="retourMenuMagasinier()">← RETOUR AU MENU</button>
+        <h3 class="sectionTitle">Historique récent</h3>
+        <div id="historyList" class="history-list"></div>
+        <button class="dark" onclick="chargerHistorique()">ACTUALISER</button>
+        <div id="historyMsg" class="msg"></div>
+      </div>
+
       <button class="gray" onclick="deconnexion()">CHANGER D’UTILISATEUR</button>
       <div id="moveMsg" class="msg"></div>
     </section>
@@ -173,11 +192,19 @@ async function connexion(){
   try{
     const r=await jsonp('login',{codeTechnicien:code,pin});
     if(!r.ok){msg('loginMsg',r.message||'Connexion impossible.','err');return;}
-    session={code:r.code,pin,nomComplet:r.nomComplet,profil:r.profil};
+    session={code:r.code,pin,nomComplet:r.nomComplet,profil:r.profil,techniciens:r.techniciens||[]};
     document.getElementById('techInfo').textContent=(String(r.profil).toUpperCase()==='MAGASINIER'?'ESPACE MAGASINIER • ':'ESPACE TECHNICIEN • ')+r.nomComplet+' • '+r.code;
     fill('magasin',r.magasins);
     fill('invMagasin',r.magasins);
     fill('typeMvt',r.typesMouvement,'libelle');
+    const tc=document.getElementById('techConcerne');
+    tc.innerHTML='';
+    (session.techniciens||[]).forEach(t=>{
+      const o=document.createElement('option');
+      o.value=t.code;
+      o.textContent=t.nomComplet+' • '+t.code;
+      tc.appendChild(o);
+    });
     document.getElementById('loginCard').classList.add('hidden');
     document.getElementById('moveCard').classList.remove('hidden');
 
@@ -185,11 +212,13 @@ async function connexion(){
       document.getElementById('magMenu').classList.remove('hidden');
       document.getElementById('movementForm').classList.add('hidden');
       document.getElementById('inventaireCard').classList.add('hidden');
+      document.getElementById('historiqueCard').classList.add('hidden');
     }else{
       document.getElementById('magMenu').classList.add('hidden');
       document.getElementById('movementForm').classList.remove('hidden');
       document.getElementById('btnRetourMenu').classList.add('hidden');
       document.getElementById('inventaireCard').classList.add('hidden');
+      document.getElementById('historiqueCard').classList.add('hidden');
     }
   }catch(e){msg('loginMsg',e.message,'err');}
 }
@@ -211,8 +240,13 @@ function choisirMouvement(libelle){
   clearMsg('moveMsg');
   document.getElementById('magMenu').classList.add('hidden');
   document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('historiqueCard').classList.add('hidden');
   document.getElementById('movementForm').classList.remove('hidden');
   document.getElementById('btnRetourMenu').classList.remove('hidden');
+
+  const isRetour=String(libelle).toUpperCase()==='RETOUR TECHNICIEN' && String(session.profil).toUpperCase()==='MAGASINIER';
+  document.getElementById('techConcerneBloc').classList.toggle('hidden',!isRetour);
+
   document.getElementById('dm').focus();
 }
 
@@ -221,15 +255,55 @@ function ouvrirInventaire(){
   clearMsg('invMsg');
   document.getElementById('magMenu').classList.add('hidden');
   document.getElementById('movementForm').classList.add('hidden');
+  document.getElementById('historiqueCard').classList.add('hidden');
   document.getElementById('inventaireCard').classList.remove('hidden');
   resetInventaire();
   setTimeout(()=>document.getElementById('invDm').focus(),100);
 }
 
+function ouvrirHistorique(){
+  clearMsg('historyMsg');
+  document.getElementById('magMenu').classList.add('hidden');
+  document.getElementById('movementForm').classList.add('hidden');
+  document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('historiqueCard').classList.remove('hidden');
+  chargerHistorique();
+}
+
+async function chargerHistorique(){
+  clearMsg('historyMsg');
+  const list=document.getElementById('historyList');
+  list.innerHTML='<div class="small">Chargement...</div>';
+  try{
+    const r=await jsonp('historique',{codeTechnicien:session.code,pin:session.pin});
+    if(!r.ok){list.innerHTML='';msg('historyMsg',r.message||'Historique indisponible.','err');return;}
+    list.innerHTML='';
+    (r.elements||[]).forEach(x=>{
+      const d=document.createElement('div');
+      d.className='history-item';
+      const q=x.quantite!==undefined&&x.quantite!==null?' • Qté '+x.quantite:'';
+      d.innerHTML='<strong>'+escapeHtml(x.type)+' • '+escapeHtml(x.article||'')+q+'</strong>'+
+                  '<span>'+escapeHtml(x.date||'')+' • '+escapeHtml(x.magasin||'')+'</span>'+
+                  '<span>'+escapeHtml(x.personne||'')+(x.saisiPar?' • saisi par '+escapeHtml(x.saisiPar):'')+'</span>';
+      list.appendChild(d);
+    });
+    if(!(r.elements||[]).length) list.innerHTML='<div class="small">Aucun historique récent.</div>';
+  }catch(e){
+    list.innerHTML='';
+    msg('historyMsg',e.message,'err');
+  }
+}
+
+function escapeHtml(v){
+  return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
 function retourMenuMagasinier(){
   document.getElementById('movementForm').classList.add('hidden');
   document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('historiqueCard').classList.add('hidden');
   document.getElementById('magMenu').classList.remove('hidden');
+  document.getElementById('techConcerneBloc').classList.add('hidden');
   document.getElementById('dm').value='';
   document.getElementById('qty').value='1';
   document.getElementById('chantier').value='';
@@ -401,7 +475,8 @@ async function valider(){
     dataMatrix:document.getElementById('dm').value.trim(),
     quantite:document.getElementById('qty').value,
     chantier:document.getElementById('chantier').value.trim(),
-    commentaire:document.getElementById('commentaire').value.trim()
+    commentaire:document.getElementById('commentaire').value.trim(),
+    technicienConcerne:document.getElementById('techConcerneBloc').classList.contains('hidden')?'':document.getElementById('techConcerne').value
   };
   if(!data.dataMatrix||Number(data.quantite)<=0){msg('moveMsg','Scanne un article et vérifie la quantité.','err');return;}
   const btn=document.getElementById('btnValider');
@@ -431,7 +506,9 @@ function deconnexion(){
   document.getElementById('magMenu').classList.add('hidden');
   document.getElementById('movementForm').classList.remove('hidden');
   document.getElementById('inventaireCard').classList.add('hidden');
+  document.getElementById('historiqueCard').classList.add('hidden');
   document.getElementById('btnRetourMenu').classList.add('hidden');
+  document.getElementById('techConcerneBloc').classList.add('hidden');
   document.getElementById('codeTechnicien').value='';
   document.getElementById('pin').value='';
   clearMsg('loginMsg');
