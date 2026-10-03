@@ -85,7 +85,7 @@
       <select id="typeMvt"></select>
       <label for="dm">Data Matrix</label>
       <input id="dm" autocomplete="off" autocapitalize="characters" placeholder="Scanner ou saisir le Data Matrix">
-      <button class="dark" onclick="ouvrirCamera()">📷 SCANNER AVEC LA CAMÉRA</button>
+      <button class="dark" onclick="modeCamera='mouvement';ouvrirCamera()">📷 SCANNER AVEC LA CAMÉRA</button>
       <div class="small">Compatible téléphone, zappette et saisie manuelle.</div>
       <div id="article" class="article"><strong id="artName"></strong><span id="artCode"></span></div>
       <label for="qty">Quantité</label>
@@ -100,7 +100,33 @@
       <div id="inventaireCard" class="hidden">
         <button class="backBtn" onclick="retourMenuMagasinier()">← RETOUR AU MENU</button>
         <h3 class="sectionTitle">Inventaire</h3>
-        <div class="small">Le module inventaire sera branché à l’étape suivante avec stock théorique, quantité comptée et calcul automatique de l’écart.</div>
+
+        <label for="invMagasin">Magasin</label>
+        <select id="invMagasin"></select>
+
+        <label for="invDm">Data Matrix</label>
+        <input id="invDm" autocomplete="off" autocapitalize="characters" placeholder="Scanner ou saisir le Data Matrix">
+        <button class="dark" onclick="ouvrirCameraInventaire()">📷 SCANNER AVEC LA CAMÉRA</button>
+
+        <div id="invArticle" class="article">
+          <strong id="invArtName"></strong>
+          <span id="invArtCode"></span>
+        </div>
+
+        <label>Stock théorique</label>
+        <div id="invStockTheo" class="tech">—</div>
+
+        <label for="invQte">Quantité comptée</label>
+        <input id="invQte" type="number" inputmode="numeric" min="0" step="1" value="0" oninput="calculerEcartInventaire()">
+
+        <label>Écart</label>
+        <div id="invEcart" class="tech">—</div>
+
+        <label for="invCommentaire">Commentaire</label>
+        <textarea id="invCommentaire" placeholder="Facultatif"></textarea>
+
+        <button id="btnValiderInv" class="red" onclick="validerInventaire()">VALIDER L’INVENTAIRE</button>
+        <div id="invMsg" class="msg"></div>
       </div>
 
       <button class="gray" onclick="deconnexion()">CHANGER D’UTILISATEUR</button>
@@ -120,7 +146,7 @@
 
 <script>
 const API_URL='https://script.google.com/macros/s/AKfycbwGpMaVaxfhuXxZHYpRxhq9zqJxEYXuEMiIEyeO1jsyo-LSWAvdfYHMU02DHDDrTek/exec';
-let session=null, reader=null, scanning=false, validationEnCours=false;
+let session=null, reader=null, scanning=false, validationEnCours=false, modeCamera='mouvement', inventaireArticle=null, stockTheoInventaire=null;
 
 function jsonp(action, params={}){
   return new Promise((resolve,reject)=>{
@@ -150,6 +176,7 @@ async function connexion(){
     session={code:r.code,pin,nomComplet:r.nomComplet,profil:r.profil};
     document.getElementById('techInfo').textContent=(String(r.profil).toUpperCase()==='MAGASINIER'?'ESPACE MAGASINIER • ':'ESPACE TECHNICIEN • ')+r.nomComplet+' • '+r.code;
     fill('magasin',r.magasins);
+    fill('invMagasin',r.magasins);
     fill('typeMvt',r.typesMouvement,'libelle');
     document.getElementById('loginCard').classList.add('hidden');
     document.getElementById('moveCard').classList.remove('hidden');
@@ -191,9 +218,12 @@ function choisirMouvement(libelle){
 
 function ouvrirInventaire(){
   clearMsg('moveMsg');
+  clearMsg('invMsg');
   document.getElementById('magMenu').classList.add('hidden');
   document.getElementById('movementForm').classList.add('hidden');
   document.getElementById('inventaireCard').classList.remove('hidden');
+  resetInventaire();
+  setTimeout(()=>document.getElementById('invDm').focus(),100);
 }
 
 function retourMenuMagasinier(){
@@ -206,6 +236,123 @@ function retourMenuMagasinier(){
   document.getElementById('commentaire').value='';
   document.getElementById('article').style.display='none';
   clearMsg('moveMsg');
+}
+
+
+document.getElementById('invDm').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();chercherArticleInventaire();}});
+
+async function chercherArticleInventaire(){
+  clearMsg('invMsg');
+  inventaireArticle=null;
+  stockTheoInventaire=null;
+  document.getElementById('invArticle').style.display='none';
+  document.getElementById('invStockTheo').textContent='—';
+  document.getElementById('invEcart').textContent='—';
+
+  const dm=document.getElementById('invDm').value.trim();
+  const magasin=document.getElementById('invMagasin').value;
+  if(!dm)return;
+
+  try{
+    const r=await jsonp('stockArticle',{
+      codeTechnicien:session.code,
+      pin:session.pin,
+      magasin:magasin,
+      dataMatrix:dm
+    });
+
+    if(!r.ok){
+      msg('invMsg',r.message||'Article introuvable.','err');
+      return;
+    }
+
+    inventaireArticle=r;
+    stockTheoInventaire=Number(r.stockTheorique);
+
+    document.getElementById('invArtName').textContent=r.designation;
+    document.getElementById('invArtCode').textContent=r.codeArticle+' • '+r.dataMatrix;
+    document.getElementById('invArticle').style.display='block';
+    document.getElementById('invStockTheo').textContent=String(r.stockTheorique);
+    document.getElementById('invQte').value=String(r.stockTheorique);
+    calculerEcartInventaire();
+    document.getElementById('invQte').focus();
+    document.getElementById('invQte').select();
+  }catch(e){
+    msg('invMsg',e.message,'err');
+  }
+}
+
+function calculerEcartInventaire(){
+  const q=Number(document.getElementById('invQte').value);
+  if(stockTheoInventaire===null || !Number.isFinite(q)){
+    document.getElementById('invEcart').textContent='—';
+    return;
+  }
+  const ecart=q-stockTheoInventaire;
+  document.getElementById('invEcart').textContent=(ecart>0?'+':'')+ecart;
+}
+
+async function validerInventaire(){
+  if(validationEnCours)return;
+  clearMsg('invMsg');
+
+  if(!inventaireArticle || stockTheoInventaire===null){
+    msg('invMsg','Scanne d’abord un article.','err');
+    return;
+  }
+
+  const q=Number(document.getElementById('invQte').value);
+  if(!Number.isFinite(q) || q<0){
+    msg('invMsg','Quantité comptée incorrecte.','err');
+    return;
+  }
+
+  const btn=document.getElementById('btnValiderInv');
+  validationEnCours=true;
+  btn.disabled=true;
+  const old=btn.textContent;
+  btn.textContent='ENREGISTREMENT...';
+
+  try{
+    const r=await jsonp('inventaire',{
+      codeTechnicien:session.code,
+      pin:session.pin,
+      magasin:document.getElementById('invMagasin').value,
+      dataMatrix:document.getElementById('invDm').value.trim(),
+      quantiteComptee:q,
+      commentaire:document.getElementById('invCommentaire').value.trim()
+    });
+
+    if(!r.ok){
+      msg('invMsg',r.message||'Inventaire non enregistré.','err');
+      return;
+    }
+
+    msg('invMsg','✓ Inventaire enregistré — écart '+(r.ecart>0?'+':'')+r.ecart+'.','ok');
+    resetInventaire();
+  }catch(e){
+    msg('invMsg',e.message,'err');
+  }finally{
+    validationEnCours=false;
+    btn.disabled=false;
+    btn.textContent=old;
+  }
+}
+
+function resetInventaire(){
+  inventaireArticle=null;
+  stockTheoInventaire=null;
+  document.getElementById('invDm').value='';
+  document.getElementById('invQte').value='0';
+  document.getElementById('invCommentaire').value='';
+  document.getElementById('invArticle').style.display='none';
+  document.getElementById('invStockTheo').textContent='—';
+  document.getElementById('invEcart').textContent='—';
+}
+
+function ouvrirCameraInventaire(){
+  modeCamera='inventaire';
+  ouvrirCamera();
 }
 
 document.getElementById('dm').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();chercherArticle();}});
@@ -225,7 +372,8 @@ async function chercherArticle(){
 }
 
 async function ouvrirCamera(){
-  clearMsg('moveMsg');
+  if(modeCamera!=='inventaire') modeCamera='mouvement';
+  clearMsg(modeCamera==='inventaire'?'invMsg':'moveMsg');
   try{
     if(typeof ZXing==='undefined')throw new Error('Module de scan non chargé.');
     document.getElementById('overlay').style.display='flex';
@@ -235,7 +383,7 @@ async function ouvrirCamera(){
       if(!scanning)return;
       if(result){
         const v=(result.getText?result.getText():result.text||'').trim();
-        if(v){document.getElementById('dm').value=v;fermerCamera();chercherArticle();}
+        if(v){if(modeCamera==='inventaire'){document.getElementById('invDm').value=v;fermerCamera();chercherArticleInventaire();}else{document.getElementById('dm').value=v;fermerCamera();chercherArticle();}}
       }
     });
   }catch(e){fermerCamera();msg('moveMsg','Impossible d’ouvrir la caméra : '+e.message,'err');}
