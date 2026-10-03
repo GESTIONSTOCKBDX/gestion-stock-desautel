@@ -70,7 +70,7 @@
       <input id="chantier" autocomplete="off" placeholder="Facultatif">
       <label for="commentaire">Commentaire</label>
       <textarea id="commentaire" placeholder="Facultatif"></textarea>
-      <button class="red" onclick="valider()">VALIDER LE MOUVEMENT</button>
+      <button id="btnValider" class="red" onclick="valider()">VALIDER LE MOUVEMENT</button>
       <button class="gray" onclick="deconnexion()">CHANGER DE TECHNICIEN</button>
       <div id="moveMsg" class="msg"></div>
     </section>
@@ -88,7 +88,7 @@
 
 <script>
 const API_URL='https://script.google.com/macros/s/AKfycbwGpMaVaxfhuXxZHYpRxhq9zqJxEYXuEMiIEyeO1jsyo-LSWAvdfYHMU02DHDDrTek/exec';
-let session=null, reader=null, scanning=false;
+let session=null, reader=null, scanning=false, validationEnCours=false;
 
 function jsonp(action, params={}){
   return new Promise((resolve,reject)=>{
@@ -159,6 +159,7 @@ async function ouvrirCamera(){
 function fermerCamera(){scanning=false;if(reader){try{reader.reset();}catch(e){}reader=null;}const v=document.getElementById('video');if(v.srcObject){v.srcObject.getTracks().forEach(t=>t.stop());v.srcObject=null;}document.getElementById('overlay').style.display='none';}
 
 async function valider(){
+  if(validationEnCours)return;
   clearMsg('moveMsg');
   if(!session){msg('moveMsg','Session invalide.','err');return;}
   const data={
@@ -171,12 +172,24 @@ async function valider(){
     commentaire:document.getElementById('commentaire').value.trim()
   };
   if(!data.dataMatrix||Number(data.quantite)<=0){msg('moveMsg','Scanne un article et vérifie la quantité.','err');return;}
+  const btn=document.getElementById('btnValider');
+  validationEnCours=true;
+  btn.disabled=true;
+  const ancienTexte=btn.textContent;
+  btn.textContent='ENREGISTREMENT...';
+
   try{
     const r=await jsonp('mouvement',data);
     if(!r.ok){msg('moveMsg',r.message||'Enregistrement impossible.','err');return;}
     msg('moveMsg','✓ '+r.article+' — quantité '+r.quantite+' enregistrée.','ok');
     document.getElementById('dm').value='';document.getElementById('qty').value='1';document.getElementById('chantier').value='';document.getElementById('commentaire').value='';document.getElementById('article').style.display='none';
-  }catch(e){msg('moveMsg',e.message,'err');}
+  }catch(e){
+    msg('moveMsg',e.message,'err');
+  }finally{
+    validationEnCours=false;
+    btn.disabled=false;
+    btn.textContent=ancienTexte;
+  }
 }
 function deconnexion(){fermerCamera();session=null;document.getElementById('moveCard').classList.add('hidden');document.getElementById('loginCard').classList.remove('hidden');document.getElementById('codeTechnicien').value='';document.getElementById('pin').value='';}
 </script>
