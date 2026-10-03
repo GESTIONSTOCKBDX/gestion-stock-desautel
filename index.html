@@ -44,8 +44,8 @@
     <div class="brand"><h1>GESTION DE STOCK</h1><p>DESAUTEL • Bordeaux / Abidos</p></div>
 
     <section id="loginCard" class="card">
-      <h2>Identification technicien</h2>
-      <label for="codeTechnicien">Code technicien</label>
+      <h2>Identification utilisateur</h2>
+      <label for="codeTechnicien">Code salarié</label>
       <input id="codeTechnicien" inputmode="numeric" autocomplete="off" placeholder="Ex. 46092">
       <label for="pin">Code PIN</label>
       <input id="pin" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="••••">
@@ -71,7 +71,7 @@
       <label for="commentaire">Commentaire</label>
       <textarea id="commentaire" placeholder="Facultatif"></textarea>
       <button id="btnValider" class="red" onclick="valider()">VALIDER LE MOUVEMENT</button>
-      <button class="gray" onclick="deconnexion()">CHANGER DE TECHNICIEN</button>
+      <button class="gray" onclick="deconnexion()">CHANGER D’UTILISATEUR</button>
       <div id="moveMsg" class="msg"></div>
     </section>
   </main>
@@ -111,12 +111,12 @@ async function connexion(){
   clearMsg('loginMsg');
   const code=document.getElementById('codeTechnicien').value.trim();
   const pin=document.getElementById('pin').value.trim();
-  if(!code||!pin){msg('loginMsg','Saisis le code technicien et le PIN.','err');return;}
+  if(!code||!pin){msg('loginMsg','Saisis ton code salarié et le PIN.','err');return;}
   try{
     const r=await jsonp('login',{codeTechnicien:code,pin});
     if(!r.ok){msg('loginMsg',r.message||'Connexion impossible.','err');return;}
-    session={code:r.code,pin,nomComplet:r.nomComplet};
-    document.getElementById('techInfo').textContent=r.nomComplet+' • '+r.code;
+    session={code:r.code,pin,nomComplet:r.nomComplet,profil:r.profil};
+    document.getElementById('techInfo').textContent=(String(r.profil).toUpperCase()==='MAGASINIER'?'ESPACE MAGASINIER • ':'ESPACE TECHNICIEN • ')+r.nomComplet+' • '+r.code;
     fill('magasin',r.magasins);
     fill('typeMvt',r.typesMouvement,'libelle');
     document.getElementById('loginCard').classList.add('hidden');
